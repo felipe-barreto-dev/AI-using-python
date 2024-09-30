@@ -1,77 +1,112 @@
 # Importando as bibliotecas necessárias
 import numpy as np
-import pandas as pd
+import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense
+from tensorflow.keras.utils import to_categorical
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
-from sklearn.utils import shuffle
 
-# Definindo cores e seus respectivos espectros
-cores = {
-    'Vermelho': [(255, 0, 0), (200, 0, 0), (150, 0, 0)],
-    'Verde': [(0, 255, 0), (0, 200, 0), (0, 150, 0)],
-    'Azul': [(0, 0, 255), (0, 0, 200), (0, 0, 150)],
-    'Amarelo': [(255, 255, 0), (200, 200, 0), (150, 150, 0)],
-    'Ciano': [(0, 255, 255), (0, 200, 200), (0, 150, 150)],
-    'Magenta': [(255, 0, 255), (200, 0, 200), (150, 0, 150)],
-    'Laranja': [(255, 165, 0), (200, 130, 0), (150, 100, 0)],
-    'Roxo': [(128, 0, 128), (100, 0, 100), (75, 0, 75)]
-}
+# Função para categorizar a cor com base no valor RGB
+def categorize_color(rgb):
+    r, g, b = rgb
+    if r < 30 and g < 30 and b < 30:
+        return 'preto'
+    elif r > 225 and g > 225 and b > 225:
+        return 'branco'
+    elif r > 200 and g < 50 and b < 50:
+        return 'vermelho'
+    elif r < 50 and g > 200 and b < 50:
+        return 'verde'
+    elif r < 50 and g < 50 and b > 200:
+        return 'azul'
+    elif r > 200 and g > 200 and b < 50:
+        return 'amarelo'
+    elif r < 50 and g > 200 and b > 200:
+        return 'ciano'
+    elif r > 200 and g < 50 and b > 200:
+        return 'magenta'
+    elif r > 150 and g > 150 and b > 150:
+        return 'cinza claro'
+    elif r < 150 and g < 150 and b < 150:
+        return 'cinza'
+    elif r > 100 and g < 100 and b < 100:
+        return 'marrom'
+    elif r < 100 and g > 100 and b < 100:
+        return 'verde escuro'
+    elif r < 100 and g < 100 and b > 100:
+        return 'azul escuro'
+    else:
+        return 'desconhecido'
 
-# Criando listas para armazenar os dados
-X = []
-y = []
+# Gerar dataset de cores aleatórias e suas respectivas classificações
+def generate_color_data(num_samples=1000):
+    data = []
+    labels = []
+    for _ in range(num_samples):
+        # Gerar cores RGB aleatórias
+        rgb = np.random.randint(0, 256, 3)
+        color = categorize_color(rgb)
+        if color != 'desconhecido':  # Ignorar rótulos desconhecidos
+            data.append(rgb)
+            labels.append(color)
+    
+    # Converter para arrays numpy
+    data = np.array(data, dtype=np.float32)
+    labels = np.array(labels)
+    
+    # Normalizar valores RGB (de 0-255 para 0-1)
+    data /= 255.0
+    
+    return data, labels
 
-# Preenchendo as listas com os dados
-for espectro, valores_rgb in cores.items():
-    for rgb in valores_rgb:
-        X.append(rgb)
-        y.append(espectro)
+# Gerar os dados RGB e seus rótulos
+X, y = generate_color_data(5000)  # Vamos gerar 5000 amostras aleatórias
 
-# Convertendo para arrays numpy
-X = np.array(X)
-y = np.array(y)
+# Codificar os rótulos para valores numéricos
+encoder = LabelEncoder()
+y_encoded = encoder.fit_transform(y)
 
-# Embaralhando os dados
-X, y = shuffle(X, y, random_state=42)
+# Converter rótulos para a forma categórica (one-hot encoding)
+y_categorical = to_categorical(y_encoded)
 
-# Codificando as labels
-le = LabelEncoder()
-y_encoded = le.fit_transform(y)
+# Dividir os dados em conjuntos de treino e teste
+X_train, X_test, y_train, y_test = train_test_split(X, y_categorical, test_size=0.2, random_state=42)
 
-# Dividindo em conjunto de treino e teste
-X_train, X_test, y_train, y_test = train_test_split(X, y_encoded, test_size=0.2, random_state=42)
-
-# Normalizando os dados (valores RGB variam de 0 a 255)
-X_train = X_train / 255.0
-X_test = X_test / 255.0
-
-# Definindo o modelo
+# Criar a rede neural
 model = Sequential()
-model.add(Dense(64, input_dim=3, activation='relu'))
-model.add(Dense(32, activation='relu'))
-model.add(Dense(len(le.classes_), activation='softmax'))
 
-# Compilando o modelo
-model.compile(loss='sparse_categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+# Camada de entrada (3 neurônios para RGB), camada oculta com 64 neurônios, função de ativação ReLU
+model.add(Dense(64, input_shape=(3,), activation='relu'))
 
-# Treinando o modelo
-history = model.fit(X_train, y_train, epochs=50, batch_size=5, validation_data=(X_test, y_test))
+# Outra camada oculta com 64 neurônios, função de ativação ReLU
+model.add(Dense(64, activation='relu'))
 
-# Avaliando o desempenho no conjunto de teste
+# Camada de saída com o número de neurônios igual ao número de classes (cores) e função softmax
+model.add(Dense(y_categorical.shape[1], activation='softmax'))
+
+# Compilar o modelo
+model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+
+# Treinar o modelo
+model.fit(X_train, y_train, epochs=50, batch_size=32, validation_data=(X_test, y_test))
+
+# Avaliar o modelo
 loss, accuracy = model.evaluate(X_test, y_test)
 print(f'Acurácia no conjunto de teste: {accuracy * 100:.2f}%')
 
-# Função para prever o espectro de uma nova cor
-def prever_espectro(r, g, b):
-    rgb_norm = np.array([[r, g, b]]) / 255.0
-    prediction = model.predict(rgb_norm)
-    index = np.argmax(prediction)
-    espectro = le.inverse_transform([index])
-    return espectro[0]
+# Função para prever a cor com base no valor RGB
+def predict_color(rgb):
+    # Normalizar o valor RGB (de 0-255 para 0-1)
+    rgb_normalized = np.array(rgb).reshape(1, -1) / 255.0
+    # Prever a classe
+    prediction = model.predict(rgb_normalized)
+    # Obter a cor prevista (índice da classe com maior probabilidade)
+    color_index = np.argmax(prediction)
+    # Converter o índice de volta para o nome da cor
+    return encoder.inverse_transform([color_index])[0]
 
-# Exemplo de uso
-nova_cor = (11, 141, 255)
-espectro_previsto = prever_espectro(*nova_cor)
-print(f'O espectro previsto para a cor {nova_cor} é: {espectro_previsto}')
+# Testar a função com alguns exemplos
+test_rgb = [0, 0, 0]  # Exemplo de valor RGB para teste
+predicted_color = predict_color(test_rgb)
+print(f'A cor prevista para RGB {test_rgb} é {predicted_color}')
